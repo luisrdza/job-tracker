@@ -2,7 +2,7 @@ name: app
 
 services:
   app:
-    build: .
+    build: ./backend
     volumes:
-      - .:/app
+      - ./backend:/app
     working_dir: /app
