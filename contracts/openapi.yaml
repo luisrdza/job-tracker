@@ -1,0 +1,71 @@
+openapi: 3.1.0
+info:
+  title: Jobs
+  version: 1.0.0
+servers:
+  - url: https://localhost
+security: []
+paths:
+  /api/v1/health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Health check page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  timestamp:
+                    type: string
+                  version:
+                    type: string
+  /api/v1/jobs:
+    get:
+      summary: Paginated list
+      responses:
+        "200":
+          description: List of jobs paginated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobPosting'
+    post:
+      summary: Create job
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobPosting'
+      responses:
+        "201":
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobPosting'
+        "422":
+          description: Job validation failed
+components:
+  schemas:
+    JobPosting:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        company:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, APPLIED, INTERVIEWING, REJECTED, OFFER]
+        created_at:
+          type: string
+          format: date-time
