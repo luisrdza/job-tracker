@@ -15,14 +15,13 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                  timestamp:
-                    type: string
-                  version:
-                    type: string
+                $ref: '#/components/schemas/HealthCheck'
+        "503":
+          description: Health check failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
   /api/v1/jobs:
     get:
       summary: Paginated list
@@ -53,6 +52,17 @@ paths:
           description: Job validation failed
 components:
   schemas:
+    HealthCheck:
+      type: object
+      properties:
+        status:
+          type: string
+        timestamp:
+          type: string
+        version:
+          type: string
+        database:
+          type: string
     JobPosting:
       type: object
       properties:
