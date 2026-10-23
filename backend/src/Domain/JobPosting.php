@@ -11,6 +11,7 @@ readonly class JobPosting
         public string $company,
         public JobStatus $status,
         public int $salaryMax,
+        public \DateTimeInterface $createdAt,
     ) {
         if (trim($title) === '') {
             throw new \InvalidArgumentException('Title cannot be empty.');

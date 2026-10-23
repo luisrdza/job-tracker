@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS jobs (
+    id UUID PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    company VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    salary_max INTEGER NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);

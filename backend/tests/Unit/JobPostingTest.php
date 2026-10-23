@@ -16,7 +16,8 @@ class JobPostingTest extends TestCase
             'title' => 'Test Title',
             'company' => 'Company 123',
             'status' => JobStatus::APPLIED,
-            'salaryMax' => 10000
+            'salaryMax' => 10000,
+            'createdAt' => new \DateTimeImmutable('now', new \DateTimeZone('UTC')),
         ];
         $jobPosting = new JobPosting(...$jobArr);
 
@@ -32,7 +33,8 @@ class JobPostingTest extends TestCase
             'title' => '',
             'company' => '  ',
             'status' => JobStatus::APPLIED,
-            'salaryMax' => 0
+            'salaryMax' => 0,
+            'createdAt' => new \DateTimeImmutable('now', new \DateTimeZone('UTC')),
         ];
         $this->expectException(InvalidArgumentException::class);
         new JobPosting(...$jobArr);
@@ -45,7 +47,8 @@ class JobPostingTest extends TestCase
             'title' => 'Test Title',
             'company' => 'Company 123',
             'status' => JobStatus::DRAFT,
-            'salaryMax' => 10000
+            'salaryMax' => 10000,
+            'createdAt' => new \DateTimeImmutable('now', new \DateTimeZone('UTC')),
         ];
         $firstJobPosting = new JobPosting(...$jobArr);
         $this->assertTrue($firstJobPosting->canTransitionTo(JobStatus::APPLIED));
