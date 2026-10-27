@@ -37,6 +37,7 @@ paths:
     post:
       summary: Create job
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -50,6 +51,23 @@ paths:
                 $ref: '#/components/schemas/JobPosting'
         "422":
           description: Job validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        "503":
+          description: Service Unavailable. The database is down or unreachable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
 components:
   schemas:
     HealthCheck:
@@ -65,10 +83,16 @@ components:
           type: string
     JobPosting:
       type: object
+      required:
+        - title
+        - company
+        - status
+        - salary_max
       properties:
         id:
           type: string
           format: uuid
+          readOnly: true
         title:
           type: string
         company:
@@ -76,6 +100,17 @@ components:
         status:
           type: string
           enum: [DRAFT, APPLIED, INTERVIEWING, REJECTED, OFFER]
+        salary_max:
+          type: integer
         created_at:
           type: string
           format: date-time
+          readOnly: true
+    ValidationError:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 422
+        message:
+          type: string
