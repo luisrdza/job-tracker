@@ -55,6 +55,45 @@ if ($method === 'GET' && $uri === '/api/v1/health') {
     exit;
 }
 
+if ($method === 'GET' && $uri === '/api/v1/jobs') {
+    try {
+        $pdo = new \PDO(
+            "pgsql:host={$env->get('DB_HOST')};port={$env->get('DB_PORT')};dbname={$env->get('DB_DATABASE')}",
+            $env->get('DB_USERNAME'),
+            $env->get('DB_PASSWORD'),
+            [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+            ]
+        );
+
+        $repository = new PostgresJobRepository($pdo);
+        $response = $repository->findAll();
+        $formattedResponse = array_map(function ($job) {
+            return $job->toArray();
+        }, $response);
+
+        http_response_code(200);
+        echo json_encode($formattedResponse);
+        exit;
+    } catch (\PDOException $e) {
+        http_response_code(503);
+        error_log("GET /api/v1/jobs failed: " . $e->getMessage());
+        echo json_encode([
+            "code" => 503,
+            "message" => "DB disconnected."
+        ]);
+        exit;
+    } catch (\Throwable $e) {
+        http_response_code(500);
+        error_log("CRITICAL ERROR: " . $e->getMessage());
+        echo json_encode([
+            "code" => 500,
+            "message" => "Internal Server Error."
+        ]);
+        exit;
+    }
+}
+
 if ($method === 'POST' && $uri === '/api/v1/jobs') {
     $input = file_get_contents("php://input");
     try {
@@ -88,8 +127,17 @@ if ($method === 'POST' && $uri === '/api/v1/jobs') {
             throw new \InvalidArgumentException('Status must be a string value.');
         }
 
-        if (!array_key_exists('salary_max', $json_array) || !filter_var($json_array['salary_max'], FILTER_VALIDATE_INT) || $json_array['salary_max'] <= 0) {
-            throw new \InvalidArgumentException('Salary must be a integer value.');
+        if (!array_key_exists('salary_max', $json_array)) {
+            throw new \InvalidArgumentException('Salary key must be present.');
+        }
+
+        if ($json_array['salary_max'] !== null) {
+            $filteredSalary = filter_var($json_array['salary_max'], FILTER_VALIDATE_INT);
+            if ($filteredSalary === false || $filteredSalary <= 0 || is_string($json_array['salary_max'])) {
+                throw new \InvalidArgumentException('Salary must be a positive integer value.');
+            }
+
+            $json_array['salary_max'] = $filteredSalary;
         }
 
         $status = JobStatus::tryFrom($json_array['status']);
@@ -104,7 +152,7 @@ if ($method === 'POST' && $uri === '/api/v1/jobs') {
             $json_array['title'],
             $json_array['company'],
             JobStatus::from($json_array['status']),
-            (int) $json_array['salary_max'],
+            $json_array['salary_max'],
             $createdAt
         );
 

@@ -17,7 +17,7 @@ class PostgresJobRepository implements JobRepositoryInterface
     public function findAll(): array
     {
         try {
-            $sql = "SELECT id, title, company, status, salary_max, created_at FROM jobs";
+            $sql = "SELECT id, title, company, status, salary_max, created_at FROM jobs ORDER BY created_at DESC";
             $query = $this->pdo->prepare($sql);
             $query->execute();
             $result = $query->fetchAll();
@@ -50,7 +50,7 @@ class PostgresJobRepository implements JobRepositoryInterface
             $query->bindValue(':title', $job->title);
             $query->bindValue(':company', $job->company);
             $query->bindValue(':status', $job->status->value);
-            $query->bindValue(':salary_max', $job->salaryMax);
+            $query->bindValue(':salary_max', $job->salaryMax, $job->salaryMax === null ? \PDO::PARAM_NULL : \PDO::PARAM_INT);
             $query->bindValue(':created_at', $job->createdAt->format('Y-m-d H:i:sP'));
 
             $query->execute();

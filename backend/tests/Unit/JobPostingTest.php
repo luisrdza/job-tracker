@@ -26,6 +26,22 @@ class JobPostingTest extends TestCase
         $this->assertSame('Company 123', $jobPosting->company);
     }
 
+    public function testJobPostingNullSalaryMax(): void
+    {
+        $jobArr = [
+            'id' => 'V25',
+            'title' => 'Test Title',
+            'company' => 'Company 123',
+            'status' => JobStatus::APPLIED,
+            'salaryMax' => null,
+            'createdAt' => new \DateTimeImmutable('now', new \DateTimeZone('UTC')),
+        ];
+        $jobPosting = new JobPosting(...$jobArr);
+
+        $this->assertIsObject($jobPosting);
+        $this->assertSame(null, $jobPosting->salaryMax);
+    }
+
     public function testJobPostingInvalidArguments(): void
     {
         $jobArr = [

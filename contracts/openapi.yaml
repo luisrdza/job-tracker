@@ -34,6 +34,18 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/JobPosting'
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        "503":
+          description: Service Unavailable. The database is down or unreachable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
     post:
       summary: Create job
       requestBody:
@@ -101,7 +113,7 @@ components:
           type: string
           enum: [DRAFT, APPLIED, INTERVIEWING, REJECTED, OFFER]
         salary_max:
-          type: integer
+          type: [integer, "null"]
         created_at:
           type: string
           format: date-time

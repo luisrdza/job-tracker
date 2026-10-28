@@ -10,7 +10,7 @@ readonly class JobPosting
         public string $title,
         public string $company,
         public JobStatus $status,
-        public int $salaryMax,
+        public ?int $salaryMax,
         public \DateTimeInterface $createdAt,
     ) {
         if (trim($title) === '') {
@@ -21,7 +21,7 @@ readonly class JobPosting
             throw new \InvalidArgumentException('Company cannot be empty.');
         }
 
-        if ($salaryMax <= 0) {
+        if ($salaryMax !== null && $salaryMax <= 0) {
             throw new \InvalidArgumentException('Salary must be greater than zero.');
         }
     }
@@ -42,5 +42,17 @@ readonly class JobPosting
         $data[6] = chr(ord($data[6]) & 0x0f | 0x40); // versión 4
         $data[8] = chr(ord($data[8]) & 0x3f | 0x80); // variante RFC 4122
         return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+    }
+
+    public function toArray(): array
+    {
+        return [
+            "id" => $this->id,
+            "title" => $this->title,
+            "company" => $this->company,
+            "status" => $this->status->value,
+            "salary_max" => $this->salaryMax,
+            "created_at" => $this->createdAt->format(\DateTimeInterface::ATOM)
+        ];
     }
 }

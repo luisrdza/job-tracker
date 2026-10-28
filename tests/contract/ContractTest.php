@@ -68,6 +68,81 @@ class ContractTest extends TestCase
         $this->assertNotFalse($dateTime);
     }
 
+    public function testPostJobsValidationPassedWithNullSalary(): void
+    {
+        curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
+        curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+
+        $uniqueTitle = 'Test Title ' . uniqid();
+
+        $payload = json_encode([
+            'title' => $uniqueTitle,
+            'company' => 'JobTracker Company',
+            'status' => 'DRAFT',
+            'salary_max' => null
+        ]);
+
+        curl_setopt($this->ch, CURLOPT_POSTFIELDS, $payload);
+
+        $response = curl_exec($this->ch);
+        $httpCode = curl_getinfo($this->ch, CURLINFO_HTTP_CODE);
+        $this->assertSame(201, $httpCode);
+
+        $data = json_decode($response, true);
+        $this->assertIsArray($data);
+
+        $this->assertNull($data['salary_max']);
+    }
+
+    public function testPostJobsValidationFailedWithStringSalary(): void
+    {
+        curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
+        curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+
+        $uniqueTitle = 'Test Title ' . uniqid();
+
+        $payload = json_encode([
+            'title' => $uniqueTitle,
+            'company' => 'JobTracker Company',
+            'status' => 'DRAFT',
+            'salary_max' => "5000"
+        ]);
+
+        curl_setopt($this->ch, CURLOPT_POSTFIELDS, $payload);
+
+        $response = curl_exec($this->ch);
+        $httpCode = curl_getinfo($this->ch, CURLINFO_HTTP_CODE);
+        $this->assertSame(422, $httpCode);
+
+        $data = json_decode($response, true);
+        $this->assertSame(422, $data['code']);
+        $this->assertSame('Invalid input data.', $data['message']);
+    }
+
+    public function testPostJobsValidationFailedWhenMissingSalaryMaxKey(): void
+    {
+        curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
+        curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+
+        $uniqueTitle = 'Test Title ' . uniqid();
+
+        $payload = json_encode([
+            'title' => $uniqueTitle,
+            'company' => 'JobTracker Company',
+            'status' => 'DRAFT',
+        ]);
+
+        curl_setopt($this->ch, CURLOPT_POSTFIELDS, $payload);
+
+        $response = curl_exec($this->ch);
+        $httpCode = curl_getinfo($this->ch, CURLINFO_HTTP_CODE);
+        $this->assertSame(422, $httpCode);
+
+        $data = json_decode($response, true);
+        $this->assertSame(422, $data['code']);
+        $this->assertSame('Invalid input data.', $data['message']);
+    }
+
     public function testPostJobsValidationFailedWithEmptyTitle(): void
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
@@ -153,5 +228,33 @@ class ContractTest extends TestCase
         $data = json_decode($response, true);
         $this->assertSame(422, $data['code']);
         $this->assertSame('Malformed JSON input.', $data['message']);
+    }
+
+    public function testGetAllJobs(): void
+    {
+        curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
+        curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'GET');
+
+        $response = curl_exec($this->ch);
+        $httpCode = curl_getinfo($this->ch, CURLINFO_HTTP_CODE);
+        $data = json_decode($response, true);
+        $requiredKeys = ['id', 'title', 'company', 'status', 'salary_max', 'created_at'];
+
+        $this->assertSame(200, $httpCode);
+        $this->assertIsArray($data);
+        $this->assertNotEmpty($data);
+
+        $originalList = array_column($data, 'created_at');
+        $orderedList = $originalList;
+        rsort($orderedList);
+
+        $this->assertSame($originalList, $orderedList);
+
+        foreach ($data as $job) {
+            $this->assertCount(count($requiredKeys), $job);
+            foreach ($requiredKeys as $key) {
+                $this->assertArrayHasKey($key, $job);
+            }
+        }
     }
 }
