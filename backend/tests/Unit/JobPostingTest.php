@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use App\Domain\JobPosting;
 use App\Domain\JobStatus;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -9,6 +10,47 @@ use PHPUnit\Framework\Attributes\CoversClass;
 #[CoversClass(JobPosting::class)]
 class JobPostingTest extends TestCase
 {
+    public static function invalidJobProvider(): iterable
+    {
+        return [
+            'empty title' => [
+                'V25',
+                '',
+                'Company 123',
+                JobStatus::APPLIED,
+                10,
+            ],
+            'title only spaces' => [
+                'V25',
+                '   ',
+                'Company 123',
+                JobStatus::APPLIED,
+                10,
+            ],
+            'empty company' => [
+                'V25',
+                'Title 123',
+                '',
+                JobStatus::APPLIED,
+                10,
+            ],
+            'salary equals to zero' => [
+                'V25',
+                'Title 123',
+                'Company 123',
+                JobStatus::APPLIED,
+                0,
+            ],
+            'negative salary' => [
+                'V25',
+                'Title 123',
+                'Company 123',
+                JobStatus::APPLIED,
+                -10,
+            ]
+        ];
+    }
+
     public function testJobPostingValidArguments(): void
     {
         $jobArr = [
@@ -42,18 +84,19 @@ class JobPostingTest extends TestCase
         $this->assertSame(null, $jobPosting->salaryMax);
     }
 
-    public function testJobPostingInvalidArguments(): void
+    #[DataProvider('invalidJobProvider')]
+    public function testJobPostingInvalidArguments(string $id, string $title, string $company, JobStatus $status, int|null $salaryMax): void
     {
-        $jobArr = [
-            'id' => 'V25',
-            'title' => '',
-            'company' => '  ',
-            'status' => JobStatus::APPLIED,
-            'salaryMax' => 0,
-            'createdAt' => new \DateTimeImmutable('now', new \DateTimeZone('UTC')),
-        ];
+        $createdAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
         $this->expectException(InvalidArgumentException::class);
-        new JobPosting(...$jobArr);
+        new JobPosting(
+            $id,
+            $title,
+            $company,
+            $status,
+            $salaryMax,
+            $createdAt
+        );
     }
 
     public function testJobPostingCanTransitionTo(): void
