@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
+use App\Domain\JobPosting;
 
 #[PHPUnit\Framework\Attributes\CoversNothing]
 class ContractTest extends TestCase
@@ -13,6 +14,14 @@ class ContractTest extends TestCase
     {
         $this->ch = curl_init();
         curl_setopt($this->ch, CURLOPT_RETURNTRANSFER, true);
+    }
+
+    public static function generateUuid(): string
+    {
+        $data = random_bytes(16);
+        $data[6] = chr(ord($data[6]) & 0x0f | 0x40); // versión 4
+        $data[8] = chr(ord($data[8]) & 0x3f | 0x80); // variante RFC 4122
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
     }
 
     public function testHealthEndpointWorking(): void
@@ -40,6 +49,10 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Idempotency-Key: ' . $this->generateUuid()
+        ]);
 
         $uniqueTitle = 'Test Title ' . uniqid();
 
@@ -58,7 +71,7 @@ class ContractTest extends TestCase
 
         $data = json_decode($response, true);
         $this->assertIsArray($data);
-        $expectedKeys = ['id', 'title', 'company', 'status', 'salary_max', 'created_at'];
+        $expectedKeys = ['id', 'title', 'company', 'status', 'salary_max', 'created_at', 'idempotency_key'];
         $actualKeys = array_keys($data);
         sort($expectedKeys);
         sort($actualKeys);
@@ -72,6 +85,10 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Idempotency-Key: ' . $this->generateUuid()
+        ]);
 
         $uniqueTitle = 'Test Title ' . uniqid();
 
@@ -94,10 +111,105 @@ class ContractTest extends TestCase
         $this->assertNull($data['salary_max']);
     }
 
+    public function testPostJobsValidationDuplicateIdempotencyKey(): void
+    {
+        curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
+        curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Idempotency-Key: ' . $this->generateUuid()
+        ]);
+
+        $uniqueTitle = 'Test Title ' . uniqid();
+
+        $payload = json_encode([
+            'title' => $uniqueTitle,
+            'company' => 'JobTracker Company',
+            'status' => 'DRAFT',
+            'salary_max' => null
+        ]);
+
+        curl_setopt($this->ch, CURLOPT_POSTFIELDS, $payload);
+
+        $response = curl_exec($this->ch);
+        $httpCode = curl_getinfo($this->ch, CURLINFO_HTTP_CODE);
+        $this->assertSame(201, $httpCode);
+
+        $data = json_decode($response, true);
+        $this->assertIsArray($data);
+
+        $secondResponse = curl_exec($this->ch);
+        $decodedData = json_decode($secondResponse, true);
+        $this->assertSame(409, curl_getinfo($this->ch, CURLINFO_HTTP_CODE));
+        $this->assertSame(409, $decodedData['code']);
+        $this->assertSame('This idempotency key has already been used.', $decodedData['message']);
+    }
+
+    public function testPostJobsValidationFailedMissingIdempotencyKey(): void
+    {
+        curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
+        curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json'
+        ]);
+
+        $uniqueTitle = 'Test Title ' . uniqid();
+
+        $payload = json_encode([
+            'title' => $uniqueTitle,
+            'company' => 'JobTracker Company',
+            'status' => 'DRAFT',
+            'salary_max' => null
+        ]);
+
+        curl_setopt($this->ch, CURLOPT_POSTFIELDS, $payload);
+
+        $response = curl_exec($this->ch);
+        $httpCode = curl_getinfo($this->ch, CURLINFO_HTTP_CODE);
+        $this->assertSame(422, $httpCode);
+
+        $data = json_decode($response, true);
+        $this->assertSame(422, $data['code']);
+        $this->assertSame('Invalid input data.', $data['message']);
+    }
+
+    public function testPostJobsValidationFailedInvalidIdempotencyKey(): void
+    {
+        curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
+        curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Idempotency-Key: abc-no-es-uuid'
+        ]);
+
+        $uniqueTitle = 'Test Title ' . uniqid();
+
+        $payload = json_encode([
+            'title' => $uniqueTitle,
+            'company' => 'JobTracker Company',
+            'status' => 'DRAFT',
+            'salary_max' => null
+        ]);
+
+        curl_setopt($this->ch, CURLOPT_POSTFIELDS, $payload);
+
+        $response = curl_exec($this->ch);
+        $httpCode = curl_getinfo($this->ch, CURLINFO_HTTP_CODE);
+        $this->assertSame(422, $httpCode);
+
+        $data = json_decode($response, true);
+        $this->assertSame(422, $data['code']);
+        $this->assertSame('Invalid input data.', $data['message']);
+    }
+
     public function testPostJobsValidationFailedWithStringSalary(): void
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Idempotency-Key: ' . $this->generateUuid()
+        ]);
 
         $uniqueTitle = 'Test Title ' . uniqid();
 
@@ -123,6 +235,10 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Idempotency-Key: ' . $this->generateUuid()
+        ]);
 
         $uniqueTitle = 'Test Title ' . uniqid();
 
@@ -147,6 +263,10 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Idempotency-Key: ' . $this->generateUuid()
+        ]);
 
         $payload = json_encode([
             'title' => ' ',
@@ -170,6 +290,10 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Idempotency-Key: ' . $this->generateUuid()
+        ]);
 
         $payload = json_encode([
             'title' => 'PHP Dev',
@@ -193,6 +317,10 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Idempotency-Key: ' . $this->generateUuid()
+        ]);
 
         $payload = json_encode([
             'title' => 'PHP Dev',
@@ -216,6 +344,10 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Idempotency-Key: ' . $this->generateUuid()
+        ]);
 
         $payload = "";
 
@@ -238,7 +370,7 @@ class ContractTest extends TestCase
         $response = curl_exec($this->ch);
         $httpCode = curl_getinfo($this->ch, CURLINFO_HTTP_CODE);
         $data = json_decode($response, true);
-        $requiredKeys = ['id', 'title', 'company', 'status', 'salary_max', 'created_at'];
+        $requiredKeys = ['id', 'title', 'company', 'status', 'salary_max', 'created_at', 'idempotency_key'];
 
         $this->assertSame(200, $httpCode);
         $this->assertIsArray($data);

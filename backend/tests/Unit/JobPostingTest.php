@@ -12,6 +12,7 @@ class JobPostingTest extends TestCase
 {
     public static function invalidJobProvider(): iterable
     {
+        $uuid = JobPosting::generateUuidV4();
         return [
             'empty title' => [
                 'V25',
@@ -19,6 +20,7 @@ class JobPostingTest extends TestCase
                 'Company 123',
                 JobStatus::APPLIED,
                 10,
+                $uuid
             ],
             'title only spaces' => [
                 'V25',
@@ -26,6 +28,7 @@ class JobPostingTest extends TestCase
                 'Company 123',
                 JobStatus::APPLIED,
                 10,
+                $uuid
             ],
             'empty company' => [
                 'V25',
@@ -33,6 +36,7 @@ class JobPostingTest extends TestCase
                 '',
                 JobStatus::APPLIED,
                 10,
+                $uuid
             ],
             'salary equals to zero' => [
                 'V25',
@@ -40,6 +44,7 @@ class JobPostingTest extends TestCase
                 'Company 123',
                 JobStatus::APPLIED,
                 0,
+                $uuid
             ],
             'negative salary' => [
                 'V25',
@@ -47,6 +52,7 @@ class JobPostingTest extends TestCase
                 'Company 123',
                 JobStatus::APPLIED,
                 -10,
+                $uuid
             ]
         ];
     }
@@ -60,6 +66,7 @@ class JobPostingTest extends TestCase
             'status' => JobStatus::APPLIED,
             'salaryMax' => 10000,
             'createdAt' => new \DateTimeImmutable('now', new \DateTimeZone('UTC')),
+            'idempotencyKey' => JobPosting::generateUuidV4()
         ];
         $jobPosting = new JobPosting(...$jobArr);
 
@@ -77,6 +84,7 @@ class JobPostingTest extends TestCase
             'status' => JobStatus::APPLIED,
             'salaryMax' => null,
             'createdAt' => new \DateTimeImmutable('now', new \DateTimeZone('UTC')),
+            'idempotencyKey' => JobPosting::generateUuidV4()
         ];
         $jobPosting = new JobPosting(...$jobArr);
 
@@ -85,7 +93,7 @@ class JobPostingTest extends TestCase
     }
 
     #[DataProvider('invalidJobProvider')]
-    public function testJobPostingInvalidArguments(string $id, string $title, string $company, JobStatus $status, int|null $salaryMax): void
+    public function testJobPostingInvalidArguments(string $id, string $title, string $company, JobStatus $status, int|null $salaryMax, string $idempotencyKey): void
     {
         $createdAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
         $this->expectException(InvalidArgumentException::class);
@@ -95,7 +103,8 @@ class JobPostingTest extends TestCase
             $company,
             $status,
             $salaryMax,
-            $createdAt
+            $createdAt,
+            $idempotencyKey
         );
     }
 
@@ -108,6 +117,7 @@ class JobPostingTest extends TestCase
             'status' => JobStatus::DRAFT,
             'salaryMax' => 10000,
             'createdAt' => new \DateTimeImmutable('now', new \DateTimeZone('UTC')),
+            'idempotencyKey' => JobPosting::generateUuidV4()
         ];
         $firstJobPosting = new JobPosting(...$jobArr);
         $this->assertTrue($firstJobPosting->canTransitionTo(JobStatus::APPLIED));

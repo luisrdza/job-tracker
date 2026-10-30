@@ -54,6 +54,14 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/JobPosting'
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Universal Unique Identifier
+          schema:
+            type: string
+            format: uuid
       responses:
         "201":
           description: Job created
@@ -61,6 +69,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/JobPosting'
+        "409":
+          description: Conflict - The request with this Idempotency-Key was already processed or it's in process.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
         "422":
           description: Job validation failed
           content:
@@ -114,6 +128,10 @@ components:
           enum: [DRAFT, APPLIED, INTERVIEWING, REJECTED, OFFER]
         salary_max:
           type: [integer, "null"]
+        idempotency_key:
+          type: string
+          format: uuid
+          readOnly: true
         created_at:
           type: string
           format: date-time

@@ -12,6 +12,7 @@ readonly class JobPosting
         public JobStatus $status,
         public ?int $salaryMax,
         public \DateTimeInterface $createdAt,
+        public string $idempotencyKey
     ) {
         if (trim($title) === '') {
             throw new \InvalidArgumentException('Title cannot be empty.');
@@ -52,7 +53,8 @@ readonly class JobPosting
             "company" => $this->company,
             "status" => $this->status->value,
             "salary_max" => $this->salaryMax,
-            "created_at" => $this->createdAt->format(\DateTimeInterface::ATOM)
+            "created_at" => $this->createdAt->format(\DateTimeInterface::ATOM),
+            "idempotency_key" => $this->idempotencyKey
         ];
     }
 }

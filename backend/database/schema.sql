@@ -4,5 +4,6 @@ CREATE TABLE IF NOT EXISTS jobs (
     company VARCHAR(255) NOT NULL,
     status VARCHAR(50) NOT NULL,
     salary_max INTEGER NULL,
-    created_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    idempotency_key UUID NOT NULL CONSTRAINT unique_idempotency_key UNIQUE
 );

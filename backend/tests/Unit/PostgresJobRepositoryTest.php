@@ -20,6 +20,7 @@ class PostgresJobRepositoryTest extends TestCase
                 'status' => 'DRAFT',
                 'salary_max' => 4000,
                 'created_at' => '2026-10-21 10:00:00',
+                'idempotency_key' => JobPosting::generateUuidV4()
             ],
             [
                 'id' => 'd3b07384-d113-4956-a5d1-5c16454bc002',
@@ -27,7 +28,8 @@ class PostgresJobRepositoryTest extends TestCase
                 'company' => 'Company 123',
                 'status' => 'APPLIED',
                 'salary_max' => 10000,
-                'created_at' => '2026-10-22 15:30:00'
+                'created_at' => '2026-10-22 15:30:00',
+                'idempotency_key' => JobPosting::generateUuidV4()
             ]
         ];
 
@@ -42,7 +44,7 @@ class PostgresJobRepositoryTest extends TestCase
 
         $pdoMock->expects($this->once())
             ->method('prepare')
-            ->with($this->stringContains('SELECT id, title, company, status, salary_max, created_at FROM jobs'))
+            ->with($this->stringContains('SELECT id, title, company, status, salary_max, created_at, idempotency_key FROM jobs'))
             ->willReturn($mockData);
 
         $repository = new PostgresJobRepository($pdoMock);
@@ -60,13 +62,15 @@ class PostgresJobRepositoryTest extends TestCase
     public function testSave()
     {
         $jobId = 'd3b07384-d113-4956-a5d1-5c16454bc002';
+        $idempotencyKey = JobPosting::generateUuidV4();
         $job = [
             'id' => $jobId,
             'title' => 'Test Title',
             'company' => 'Company 123',
             'status' => JobStatus::APPLIED,
             'salaryMax' => 10000,
-            'createdAt' => new \DateTimeImmutable('2026-10-22 15:30:00')
+            'createdAt' => new \DateTimeImmutable('2026-10-22 15:30:00'),
+            'idempotencyKey' => $idempotencyKey
         ];
 
         $jobPosting = new JobPosting(...$job);
@@ -74,7 +78,7 @@ class PostgresJobRepositoryTest extends TestCase
         $spyBindings = [];
         $mockData = $this->createMock(\PDOStatement::class);
 
-        $mockData->expects($this->exactly(6))
+        $mockData->expects($this->exactly(7))
             ->method('bindValue')
             ->willReturnCallback(function (string $param, mixed $value) use (&$spyBindings): bool {
                 $spyBindings[$param] = $value;
@@ -94,7 +98,7 @@ class PostgresJobRepositoryTest extends TestCase
 
         $repository->save($jobPosting);
 
-        $this->assertCount(6, $spyBindings, 'The six required parameters were not sent to bindValue.');
+        $this->assertCount(7, $spyBindings, 'The six required parameters were not sent to bindValue.');
 
         $this->assertSame($jobId, $spyBindings[':id'] ?? null);
         $this->assertSame('Test Title', $spyBindings[':title'] ?? null);
@@ -102,5 +106,6 @@ class PostgresJobRepositoryTest extends TestCase
         $this->assertSame('APPLIED', $spyBindings[':status'] ?? null);
         $this->assertSame(10000, $spyBindings[':salary_max'] ?? null);
         $this->assertSame('2026-10-22 15:30:00+00:00', $spyBindings[':created_at'] ?? null);
+        $this->assertSame($idempotencyKey, $spyBindings[':idempotency_key'] ?? null);
     }
 }

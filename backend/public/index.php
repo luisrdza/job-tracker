@@ -115,6 +115,10 @@ if ($method === 'POST' && $uri === '/api/v1/jobs') {
             throw new \InvalidArgumentException('Invalid JSON payload. Expected a JSON object.');
         }
 
+        if (!isset($_SERVER['HTTP_IDEMPOTENCY_KEY']) || preg_match('/^[a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}$/i', $_SERVER['HTTP_IDEMPOTENCY_KEY']) !== 1) {
+            throw new \InvalidArgumentException('The http idempotency_key header is required and with correct structure.');
+        }
+
         if (!array_key_exists('title', $json_array) || !is_string($json_array['title']) || trim($json_array['title']) === '') {
             throw new \InvalidArgumentException('The title is required.');
         }
@@ -153,7 +157,8 @@ if ($method === 'POST' && $uri === '/api/v1/jobs') {
             $json_array['company'],
             JobStatus::from($json_array['status']),
             $json_array['salary_max'],
-            $createdAt
+            $createdAt,
+            $_SERVER['HTTP_IDEMPOTENCY_KEY']
         );
 
         $repository = new PostgresJobRepository($pdo);
@@ -161,14 +166,7 @@ if ($method === 'POST' && $uri === '/api/v1/jobs') {
         $repository->save($request);
 
         http_response_code(201);
-        echo json_encode([
-            "id" => $request->id,
-            "title" => $request->title,
-            "company" => $request->company,
-            "status" => $request->status->value,
-            "salary_max" => $request->salaryMax,
-            "created_at" => $request->createdAt->format(\DateTimeInterface::ATOM)
-        ]);
+        echo json_encode($request->toArray());
         exit;
     } catch (\InvalidArgumentException $e) {
         http_response_code(422);
@@ -195,6 +193,14 @@ if ($method === 'POST' && $uri === '/api/v1/jobs') {
         ]);
         exit;
     } catch (\Throwable $e) {
+        if ($e->getCode() === 409) {
+            http_response_code(409);
+            echo json_encode([
+                "code" => 409,
+                "message" => "This idempotency key has already been used."
+            ]);
+            exit;
+        }
         http_response_code(500);
         error_log("CRITICAL ERROR: " . $e->getMessage());
         echo json_encode([
