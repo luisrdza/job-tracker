@@ -48,6 +48,8 @@ paths:
                 $ref: '#/components/schemas/ValidationError'
     post:
       summary: Create job
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -69,6 +71,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/JobPosting'
+        "401":
+          description: Unauthorized (invalid token or missing)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        "403":
+          description: Forbidden (do not have permission)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
         "409":
           description: Conflict - The request with this Idempotency-Key was already processed or it's in process.
           content:
@@ -95,6 +109,11 @@ paths:
                 $ref: '#/components/schemas/ValidationError'
 
 components:
+  securitySchemes:
+    BearerAuth:
+      description: Bearer token
+      type: http
+      scheme: bearer
   schemas:
     HealthCheck:
       type: object

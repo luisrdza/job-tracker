@@ -5,6 +5,7 @@ use App\Infrastructure\Env;
 use App\Domain\JobPosting;
 use App\Domain\JobStatus;
 use App\Infrastructure\PostgresJobRepository;
+use App\Infrastructure\Security\TokenSecurityService;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
@@ -97,6 +98,46 @@ if ($method === 'GET' && $uri === '/api/v1/jobs') {
 if ($method === 'POST' && $uri === '/api/v1/jobs') {
     $input = file_get_contents("php://input");
     try {
+        $bearerToken = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+
+        preg_match('/Bearer\s(\S+)/i', $bearerToken, $matches);
+        if (!isset($matches[1]) || trim($matches[1]) === '') {
+            http_response_code(401);
+            error_log("POST /api/v1/jobs failed: invalid token.");
+            echo json_encode([
+                "code" => 401,
+                "message" => "Invalid token."
+            ]);
+            exit;
+        }
+
+        $userToken = $matches[1];
+        $securityService = new TokenSecurityService();
+        $readOnlyToken = $env->get('TOKEN_READ');
+        $writeToken = $env->get('TOKEN_WRITE');
+        $isReadOnlyToken = $securityService->verifyToken($readOnlyToken, $userToken);
+        $isWriteToken = $securityService->verifyToken($writeToken, $userToken);
+
+        if (!$isReadOnlyToken && !$isWriteToken) {
+            http_response_code(401);
+            error_log("POST /api/v1/jobs failed: invalid token.");
+            echo json_encode([
+                "code" => 401,
+                "message" => "Invalid token."
+            ]);
+            exit;
+        }
+
+        if ($isReadOnlyToken) {
+            http_response_code(403);
+            error_log("POST /api/v1/jobs failed: Forbidden.");
+            echo json_encode([
+                "code" => 403,
+                "message" => "User do not have permission."
+            ]);
+            exit;
+        }
+
         $pdo = new \PDO(
             "pgsql:host={$env->get('DB_HOST')};port={$env->get('DB_PORT')};dbname={$env->get('DB_DATABASE')}",
             $env->get('DB_USERNAME'),

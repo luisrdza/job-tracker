@@ -24,4 +24,9 @@
             <directory>src</directory>
         </include>
     </source>
+    <php>
+        <!-- PHPUnit inyectará automáticamente estas variables en $_ENV y getenv() -->
+        <env name="TOKEN_READ" value="7fca38b4d812d369a473a25b1f486d1a9320d3f8216c0b55de17a942bc432a12"/>
+        <env name="TOKEN_WRITE" value="e2c949db12fa521482b6e14a13e5124116c90d81237aef921342bbcf451a90bc"/>
+    </php>
 </phpunit>

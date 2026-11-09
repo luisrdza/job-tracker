@@ -10,7 +10,9 @@ class Env
             'DB_PORT',
             'DB_DATABASE',
             'DB_USERNAME',
-            'DB_PASSWORD'
+            'DB_PASSWORD',
+            'TOKEN_WRITE',
+            'TOKEN_READ'
         ]
     ) {
         $this->variables = empty($variables) ? $_ENV : $variables;

@@ -2,7 +2,6 @@
 declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
-use App\Domain\JobPosting;
 
 #[PHPUnit\Framework\Attributes\CoversNothing]
 class ContractTest extends TestCase
@@ -15,6 +14,29 @@ class ContractTest extends TestCase
         $this->ch = curl_init();
         curl_setopt($this->ch, CURLOPT_RETURNTRANSFER, true);
     }
+
+    private function getHeaders(array $overrides = []): array
+    {
+        $writeTokenPlainText = getenv('TOKEN_WRITE') ?: $_ENV['TOKEN_WRITE'] ?? 'fallback_local';
+
+        $defaultHeaders = [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $writeTokenPlainText,
+            'Idempotency-Key' => $this->generateUuid()
+        ];
+
+        $mergedHeaders = array_merge($defaultHeaders, $overrides);
+
+        $curlHeaders = [];
+        foreach ($mergedHeaders as $key => $value) {
+            if ($value !== null) {
+                $curlHeaders[] = "$key: $value";
+            }
+        }
+
+        return $curlHeaders;
+    }
+
 
     public static function generateUuid(): string
     {
@@ -49,10 +71,7 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
-        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Idempotency-Key: ' . $this->generateUuid()
-        ]);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $this->getHeaders());
 
         $uniqueTitle = 'Test Title ' . uniqid();
 
@@ -85,10 +104,7 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
-        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Idempotency-Key: ' . $this->generateUuid()
-        ]);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $this->getHeaders());
 
         $uniqueTitle = 'Test Title ' . uniqid();
 
@@ -111,14 +127,95 @@ class ContractTest extends TestCase
         $this->assertNull($data['salary_max']);
     }
 
+    public function testPostJobsValidationFailedEmptyAuthHeader(): void
+    {
+        curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
+        curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        $headers = $this->getHeaders(['Authorization' => 'Bearer ']);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $headers);
+
+        $uniqueTitle = 'Test Title ' . uniqid();
+
+        $payload = json_encode([
+            'title' => $uniqueTitle,
+            'company' => 'JobTracker Company',
+            'status' => 'DRAFT',
+            'salary_max' => null
+        ]);
+
+        curl_setopt($this->ch, CURLOPT_POSTFIELDS, $payload);
+
+        $response = curl_exec($this->ch);
+        $httpCode = curl_getinfo($this->ch, CURLINFO_HTTP_CODE);
+        $this->assertSame(401, $httpCode);
+
+        $data = json_decode($response, true);
+        $this->assertSame(401, $data['code']);
+        $this->assertSame('Invalid token.', $data['message']);
+    }
+
+    public function testPostJobsValidationFailedInvalidAuthHeader(): void
+    {
+        curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
+        curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        $headers = $this->getHeaders(['Authorization' => 'Bearer test_1234']);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $headers);
+
+        $uniqueTitle = 'Test Title ' . uniqid();
+
+        $payload = json_encode([
+            'title' => $uniqueTitle,
+            'company' => 'JobTracker Company',
+            'status' => 'DRAFT',
+            'salary_max' => null
+        ]);
+
+        curl_setopt($this->ch, CURLOPT_POSTFIELDS, $payload);
+
+        $response = curl_exec($this->ch);
+        $httpCode = curl_getinfo($this->ch, CURLINFO_HTTP_CODE);
+        $this->assertSame(401, $httpCode);
+
+        $data = json_decode($response, true);
+        $this->assertSame(401, $data['code']);
+        $this->assertSame('Invalid token.', $data['message']);
+    }
+
+    public function testPostJobsValidationFailedReadOnlyTokenAuthHeader(): void
+    {
+        $readTokenPlainText = getenv('TOKEN_READ') ?: $_ENV['TOKEN_READ'] ?? 'fallback_local';
+        curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
+        curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        $headers = $this->getHeaders(['Authorization' => 'Bearer ' . $readTokenPlainText]);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $headers);
+
+        $uniqueTitle = 'Test Title ' . uniqid();
+
+        $payload = json_encode([
+            'title' => $uniqueTitle,
+            'company' => 'JobTracker Company',
+            'status' => 'DRAFT',
+            'salary_max' => null
+        ]);
+
+        curl_setopt($this->ch, CURLOPT_POSTFIELDS, $payload);
+
+        $response = curl_exec($this->ch);
+        $httpCode = curl_getinfo($this->ch, CURLINFO_HTTP_CODE);
+        $this->assertSame(403, $httpCode);
+
+        $data = json_decode($response, true);
+        $this->assertSame(403, $data['code']);
+        $this->assertSame('User do not have permission.', $data['message']);
+    }
+
     public function testPostJobsValidationDuplicateIdempotencyKey(): void
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
-        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Idempotency-Key: ' . $this->generateUuid()
-        ]);
+        $idempotencyKey = $this->generateUuid();
+        $headers = $this->getHeaders(['Idempotency-Key' => $idempotencyKey]);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $headers);
 
         $uniqueTitle = 'Test Title ' . uniqid();
 
@@ -149,9 +246,8 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
-        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json'
-        ]);
+        $headers = $this->getHeaders(['Idempotency-Key' => null]);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $headers);
 
         $uniqueTitle = 'Test Title ' . uniqid();
 
@@ -177,10 +273,8 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
-        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Idempotency-Key: abc-no-es-uuid'
-        ]);
+        $headers = $this->getHeaders(['Idempotency-Key' => 'abc-no-es-uuid']);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $headers);
 
         $uniqueTitle = 'Test Title ' . uniqid();
 
@@ -206,10 +300,7 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
-        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Idempotency-Key: ' . $this->generateUuid()
-        ]);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $this->getHeaders());
 
         $uniqueTitle = 'Test Title ' . uniqid();
 
@@ -235,10 +326,7 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
-        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Idempotency-Key: ' . $this->generateUuid()
-        ]);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $this->getHeaders());
 
         $uniqueTitle = 'Test Title ' . uniqid();
 
@@ -263,10 +351,7 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
-        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Idempotency-Key: ' . $this->generateUuid()
-        ]);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $this->getHeaders());
 
         $payload = json_encode([
             'title' => ' ',
@@ -290,10 +375,7 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
-        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Idempotency-Key: ' . $this->generateUuid()
-        ]);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $this->getHeaders());
 
         $payload = json_encode([
             'title' => 'PHP Dev',
@@ -317,10 +399,7 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
-        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Idempotency-Key: ' . $this->generateUuid()
-        ]);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $this->getHeaders());
 
         $payload = json_encode([
             'title' => 'PHP Dev',
@@ -344,10 +423,7 @@ class ContractTest extends TestCase
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
         curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
-        curl_setopt($this->ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Idempotency-Key: ' . $this->generateUuid()
-        ]);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $this->getHeaders());
 
         $payload = "";
 
