@@ -61,7 +61,7 @@ class PostgresJobRepository implements JobRepositoryInterface
             return $jobs;
         } catch (\Throwable $e) {
             error_log('Method PostgresJobRepository failed: ' . $e->getMessage());
-            throw new \RuntimeException("Could not return the jobs. ", 0, $e);
+            throw new \RuntimeException("Could not return the jobs.", 0, $e);
         }
     }
 
@@ -85,7 +85,7 @@ class PostgresJobRepository implements JobRepositoryInterface
             if ((string) $e->getCode() === '23505') {
                 throw new \RuntimeException("Idempotency key already exists.", 409, $e);
             }
-            throw new \RuntimeException("The job was not stored. ", 0, $e);
+            throw new \RuntimeException("The job was not stored.", 0, $e);
         }
     }
 }
