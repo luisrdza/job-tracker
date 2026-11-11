@@ -144,9 +144,15 @@ class PostgresJobRepositoryTest extends TestCase
 
         $repository = new PostgresJobRepository($pdoMock);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage("Could not return the jobs.");
-        $repository->findAll(null, 2);
+        $exception = null;
+        try {
+            $repository->findAll(null, 2);
+        } catch (\RuntimeException $e) {
+            $exception = $e;
+        }
+        $this->assertNotNull($exception, "It was expected findAll() throws a RuntimeException");
+        $this->assertSame("Could not return the jobs.", $exception->getMessage());
+        $this->assertInstanceOf(\PDOException::class, $exception->getPrevious());
     }
 
     public function testSave()
@@ -188,14 +194,64 @@ class PostgresJobRepositoryTest extends TestCase
 
         $repository->save($jobPosting);
 
-        $this->assertCount(7, $spyBindings, 'The six required parameters were not sent to bindValue.');
+        $requiredKeys = [
+            ':id',
+            ':title',
+            ':company',
+            ':status',
+            ':salary_max',
+            ':created_at',
+            ':idempotency_key'
+        ];
 
-        $this->assertSame($jobId, $spyBindings[':id'] ?? null);
-        $this->assertSame('Test Title', $spyBindings[':title'] ?? null);
-        $this->assertSame('Company 123', $spyBindings[':company'] ?? null);
-        $this->assertSame('APPLIED', $spyBindings[':status'] ?? null);
-        $this->assertSame(10000, $spyBindings[':salary_max'] ?? null);
-        $this->assertSame('2026-10-22 15:30:00+00:00', $spyBindings[':created_at'] ?? null);
-        $this->assertSame($idempotencyKey, $spyBindings[':idempotency_key'] ?? null);
+        foreach ($requiredKeys as $key) {
+            $this->assertArrayHasKey($key, $spyBindings);
+        }
+
+        $this->assertCount(7, $spyBindings, 'The seven required parameters were not sent to bindValue.');
+
+        $this->assertSame($jobId, $spyBindings[':id']);
+        $this->assertSame('Test Title', $spyBindings[':title']);
+        $this->assertSame('Company 123', $spyBindings[':company']);
+        $this->assertSame('APPLIED', $spyBindings[':status']);
+        $this->assertSame(10000, $spyBindings[':salary_max']);
+        $this->assertSame('2026-10-22 15:30:00+00:00', $spyBindings[':created_at']);
+        $this->assertSame($idempotencyKey, $spyBindings[':idempotency_key']);
+    }
+
+    public function testSaveExceptionFailure()
+    {
+        $jobId = 'd3b07384-d113-4956-a5d1-5c16454bc002';
+        $idempotencyKey = JobPosting::generateUuidV4();
+        $job = [
+            'id' => $jobId,
+            'title' => 'Test Title',
+            'company' => 'Company 123',
+            'status' => JobStatus::APPLIED,
+            'salaryMax' => 10000,
+            'createdAt' => new \DateTimeImmutable('2026-10-22 15:30:00'),
+            'idempotencyKey' => $idempotencyKey
+        ];
+
+        $jobPosting = new JobPosting(...$job);
+        $pdoMock = $this->createMock(\PDO::class);
+
+        $pdoMock->expects($this->once())
+            ->method('prepare')
+            ->with($this->stringContains('INSERT INTO jobs'))
+            ->willThrowException(new \PDOException());
+
+        $repository = new PostgresJobRepository($pdoMock);
+
+        $exception = null;
+        try {
+            $repository->save($jobPosting);
+        } catch (\RuntimeException $e) {
+            $exception = $e;
+        }
+
+        $this->assertNotNull($exception, 'It was expected that save() throws a RuntimeExceptions.');
+        $this->assertSame("The job was not stored.", $exception->getMessage());
+        $this->assertInstanceOf(\PDOException::class, $exception->getPrevious());
     }
 }

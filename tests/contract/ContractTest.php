@@ -166,6 +166,33 @@ class ContractTest extends TestCase
         $this->assertSame('Invalid token.', $data['message']);
     }
 
+    public function testPostJobsValidationFailedMissingAuthHeader(): void
+    {
+        curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
+        curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        $headers = $this->getHeaders(['Authorization' => null]);
+        curl_setopt($this->ch, CURLOPT_HTTPHEADER, $headers);
+
+        $uniqueTitle = 'Test Title ' . uniqid();
+
+        $payload = json_encode([
+            'title' => $uniqueTitle,
+            'company' => 'JobTracker Company',
+            'status' => 'DRAFT',
+            'salary_max' => null
+        ]);
+
+        curl_setopt($this->ch, CURLOPT_POSTFIELDS, $payload);
+
+        $response = curl_exec($this->ch);
+        $httpCode = curl_getinfo($this->ch, CURLINFO_HTTP_CODE);
+        $this->assertSame(401, $httpCode);
+
+        $data = json_decode($response, true);
+        $this->assertSame(401, $data['code']);
+        $this->assertSame('Invalid token.', $data['message']);
+    }
+
     public function testPostJobsValidationFailedInvalidAuthHeader(): void
     {
         curl_setopt($this->ch, CURLOPT_URL, $this->baseUrl . '/jobs');
