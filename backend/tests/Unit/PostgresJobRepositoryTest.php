@@ -35,6 +35,23 @@ class PostgresJobRepositoryTest extends TestCase
 
         $mockData = $this->createMock(\PDOStatement::class);
 
+        $bindValueCalls = 0;
+        $mockData->expects($this->exactly(2))
+            ->method('bindValue')
+            ->willReturnCallback(function ($param, $value, $type) use (&$bindValueCalls) {
+                $bindValueCalls++;
+                if ($bindValueCalls === 1) {
+                    $this->assertSame(':status', $param);
+                    $this->assertSame('DRAFT', $value);
+                    $this->assertSame(\PDO::PARAM_STR, $type);
+                } elseif ($bindValueCalls === 2) {
+                    $this->assertSame(':limit', $param);
+                    $this->assertSame(2, $value);
+                    $this->assertSame(\PDO::PARAM_INT, $type);
+                }
+                return true;
+            });
+
         $mockData->expects($this->once())->method('execute');
         $mockData->expects($this->once())
             ->method('fetchAll')
@@ -44,12 +61,12 @@ class PostgresJobRepositoryTest extends TestCase
 
         $pdoMock->expects($this->once())
             ->method('prepare')
-            ->with($this->stringContains('SELECT id, title, company, status, salary_max, created_at, idempotency_key FROM jobs'))
+            ->with($this->stringContains('SELECT id, title, company, status, salary_max, created_at, idempotency_key'))
             ->willReturn($mockData);
 
         $repository = new PostgresJobRepository($pdoMock);
 
-        $result = $repository->findAll();
+        $result = $repository->findAll(JobStatus::DRAFT, 2);
 
         $hydratedJob = $result[0];
         $this->assertCount(2, $result);
@@ -57,6 +74,79 @@ class PostgresJobRepositoryTest extends TestCase
 
         $this->assertSame(JobStatus::DRAFT, $hydratedJob->status);
         $this->assertInstanceOf(\DateTimeImmutable::class, $hydratedJob->createdAt);
+    }
+
+    public function testFindAllWithoutStatus()
+    {
+        $jobArr = [
+            [
+                'id' => 'd3b07384-d113-4956-a5d1-5c16454bc001',
+                'title' => 'First Test Title',
+                'company' => 'Company 1',
+                'status' => 'DRAFT',
+                'salary_max' => 4000,
+                'created_at' => '2026-10-21 10:00:00',
+                'idempotency_key' => JobPosting::generateUuidV4()
+            ],
+            [
+                'id' => 'd3b07384-d113-4956-a5d1-5c16454bc002',
+                'title' => 'Test Title',
+                'company' => 'Company 123',
+                'status' => 'APPLIED',
+                'salary_max' => 10000,
+                'created_at' => '2026-10-22 15:30:00',
+                'idempotency_key' => JobPosting::generateUuidV4()
+            ]
+        ];
+
+        $mockData = $this->createMock(\PDOStatement::class);
+
+        $mockData->expects($this->exactly(1))
+            ->method('bindValue')
+            ->willReturnCallback(function ($param, $value, $type) {
+                $this->assertSame(':limit', $param);
+                $this->assertSame(2, $value);
+                $this->assertSame(\PDO::PARAM_INT, $type);
+                return true;
+            });
+
+        $mockData->expects($this->once())->method('execute');
+        $mockData->expects($this->once())
+            ->method('fetchAll')
+            ->willReturn($jobArr);
+
+        $pdoMock = $this->createMock(\PDO::class);
+
+        $pdoMock->expects($this->once())
+            ->method('prepare')
+            ->with($this->stringContains('SELECT id, title, company, status, salary_max, created_at, idempotency_key'))
+            ->willReturn($mockData);
+
+        $repository = new PostgresJobRepository($pdoMock);
+
+        $result = $repository->findAll(null, 2);
+
+        $hydratedJob = $result[0];
+        $this->assertCount(2, $result);
+        $this->assertInstanceOf(JobPosting::class, $hydratedJob);
+
+        $this->assertSame(JobStatus::DRAFT, $hydratedJob->status);
+        $this->assertInstanceOf(\DateTimeImmutable::class, $hydratedJob->createdAt);
+    }
+
+    public function testFindAllExceptionFailure()
+    {
+        $pdoMock = $this->createMock(\PDO::class);
+
+        $pdoMock->expects($this->once())
+            ->method('prepare')
+            ->willThrowException(new \PDOException());
+
+        $repository = new PostgresJobRepository($pdoMock);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage("Could not return the jobs.");
+        $repository->findAll(null, 2);
     }
 
     public function testSave()

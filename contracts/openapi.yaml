@@ -25,15 +25,53 @@ paths:
   /api/v1/jobs:
     get:
       summary: Paginated list
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filter by job status (JobStatus PHP Enum)
+          schema:
+            type: string
+            enum: [DRAFT, APPLIED, INTERVIEWING, REJECTED, OFFER]
+        - name: limit
+          in: query
+          required: false
+          description: Max limit records to be returned.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          description: URL-safe Base64 token representing the created_at and ID of the last processed record.
+          schema:
+            type: string
       responses:
         "200":
           description: List of jobs paginated
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/JobPosting'
+                type: object
+                required: [data, next_cursor]
+                properties:
+                  data:
+                    type: array
+                    description: The page results.
+                    items:
+                      $ref: '#/components/schemas/JobPosting'
+                  next_cursor:
+                    type: [string, "null"]
+                    description: Token to fetch the next page. It will be null if there are no more results.
+                    example: "eyJjcmVhdGVkX2F0IjoiMjAyNi0xMS0xMCAxMDo..."
+        "422":
+          description: Job validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
         "500":
           description: Internal Server Error
           content:

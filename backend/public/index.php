@@ -58,6 +58,83 @@ if ($method === 'GET' && $uri === '/api/v1/health') {
 
 if ($method === 'GET' && $uri === '/api/v1/jobs') {
     try {
+        $status = $_GET['status'] ?? '';
+        $jobStatusObj = JobStatus::tryFrom($status);
+        $limit = $_GET['limit'] ?? 20; // 20 default value
+        $cursorParam = $_GET['cursor'] ?? '';
+        $cursorDate = null;
+        $cursorId = null;
+
+        if ($cursorParam !== '') {
+            $isValidCursor = false;
+            $remainder = strlen($cursorParam) % 4;
+            if ($remainder) {
+                $cursorParam .= str_repeat("=", 4 - $remainder);
+            }
+            $paddedCursor = str_replace(['-', '_'], ['+', '/'], $cursorParam);
+
+            $decodedJson = base64_decode($paddedCursor, true);
+
+            if ($decodedJson !== false) {
+                $data = json_decode($decodedJson, true);
+
+                if (is_array($data) && isset($data['created_at'], $data['id'])) {
+                    $createdAtDate = (string) $data['created_at'];
+                    $uuid = (string) $data['id'];
+
+                    if (
+                        preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/', $createdAtDate) &&
+                        preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/', $uuid)
+                    ) {
+                        $cursorDate = $createdAtDate;
+                        $cursorId = $uuid;
+                        $isValidCursor = true;
+                    }
+                }
+            }
+
+            if (!$isValidCursor) {
+                http_response_code(422);
+                error_log("GET /api/v1/jobs failed: Invalid cursor format or tampered token.");
+                echo json_encode([
+                    "code" => 422,
+                    "message" => "Invalid cursor value."
+                ]);
+                exit;
+            }
+        }
+
+        if ($status !== '' && $jobStatusObj === null) {
+            http_response_code(422);
+            error_log("GET /api/v1/jobs failed: Invalid status value.");
+            echo json_encode([
+                "code" => 422,
+                "message" => "Invalid status value."
+            ]);
+            exit;
+        }
+
+        $filteredLimit = filter_var($limit, FILTER_VALIDATE_INT);
+        if ($filteredLimit === false) {
+            http_response_code(422);
+            error_log("GET /api/v1/jobs failed: Limit must be a numeric value between 1 and 50.");
+            echo json_encode([
+                "code" => 422,
+                "message" => "Limit must be a numeric value between 1 and 50."
+            ]);
+            exit;
+        }
+
+        if ($filteredLimit <= 0 || $filteredLimit > 50) {
+            http_response_code(422);
+            error_log("GET /api/v1/jobs failed: Limit must be a numeric value between 1 and 50.");
+            echo json_encode([
+                "code" => 422,
+                "message" => "Limit must be a numeric value between 1 and 50."
+            ]);
+            exit;
+        }
+
         $pdo = new \PDO(
             "pgsql:host={$env->get('DB_HOST')};port={$env->get('DB_PORT')};dbname={$env->get('DB_DATABASE')}",
             $env->get('DB_USERNAME'),
@@ -68,13 +145,31 @@ if ($method === 'GET' && $uri === '/api/v1/jobs') {
         );
 
         $repository = new PostgresJobRepository($pdo);
-        $response = $repository->findAll();
+        $response = $repository->findAll($jobStatusObj, $filteredLimit + 1, $cursorDate, $cursorId);
         $formattedResponse = array_map(function ($job) {
             return $job->toArray();
         }, $response);
 
+        $nextCursor = null;
+        if (count($formattedResponse) > $filteredLimit) {
+            array_pop($formattedResponse);
+            $lastJob = end($formattedResponse);
+            $date = new DateTime($lastJob['created_at']);
+
+            $cursorData = [
+                'created_at' => $date->format('Y-m-d H:i:s.u'),
+                'id' => $lastJob['id']
+            ];
+
+            $jsonString = json_encode($cursorData, JSON_THROW_ON_ERROR);
+            $nextCursor = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($jsonString));
+        }
+
         http_response_code(200);
-        echo json_encode($formattedResponse);
+        echo json_encode([
+            'data' => $formattedResponse,
+            'next_cursor' => $nextCursor
+        ]);
         exit;
     } catch (\PDOException $e) {
         http_response_code(503);
@@ -86,7 +181,7 @@ if ($method === 'GET' && $uri === '/api/v1/jobs') {
         exit;
     } catch (\Throwable $e) {
         http_response_code(500);
-        error_log("CRITICAL ERROR: " . $e->getMessage());
+        error_log(sprintf("CRITICAL ERROR: %s in %s on line %d", $e->getMessage(), $e->getFile(), $e->getLine()));
         echo json_encode([
             "code" => 500,
             "message" => "Internal Server Error."
@@ -164,8 +259,30 @@ if ($method === 'POST' && $uri === '/api/v1/jobs') {
             throw new \InvalidArgumentException('The title is required.');
         }
 
+        $cleanTitle = strip_tags($json_array['title']);
+        if ($json_array['title'] !== $cleanTitle || trim($cleanTitle) === '') {
+            http_response_code(422);
+            error_log("POST /api/v1/jobs failed: HTML tags are not allowed.");
+            echo json_encode([
+                "code" => 422,
+                "message" => "HTML tags are not allowed."
+            ]);
+            exit;
+        }
+
         if (!array_key_exists('company', $json_array) || !is_string($json_array['company']) || trim($json_array['company']) === '') {
             throw new \InvalidArgumentException('The company is required.');
+        }
+
+        $cleanCompany = strip_tags($json_array['company']);
+        if ($json_array['company'] !== $cleanCompany || trim($cleanCompany) === '') {
+            http_response_code(422);
+            error_log("POST /api/v1/jobs failed: HTML tags are not allowed.");
+            echo json_encode([
+                "code" => 422,
+                "message" => "HTML tags are not allowed."
+            ]);
+            exit;
         }
 
         if (!array_key_exists('status', $json_array) || !is_string($json_array['status']) || trim($json_array['status']) === '') {

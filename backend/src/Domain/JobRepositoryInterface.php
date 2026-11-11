@@ -5,5 +5,5 @@ namespace App\Domain;
 interface JobRepositoryInterface
 {
     public function save(JobPosting $job): void;
-    public function findAll(): array;
+    public function findAll(?JobStatus $jobStatus, int $limit): array;
 }

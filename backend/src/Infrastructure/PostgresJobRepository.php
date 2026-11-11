@@ -14,11 +14,35 @@ class PostgresJobRepository implements JobRepositoryInterface
     ) {
     }
 
-    public function findAll(): array
+    public function findAll(?JobStatus $jobStatus, int $limit = 20, ?string $cursorDate = null, ?string $cursorId = null): array
     {
         try {
-            $sql = "SELECT id, title, company, status, salary_max, created_at, idempotency_key FROM jobs ORDER BY created_at DESC";
+            $sql = "SELECT id, title, company, status, salary_max, created_at, idempotency_key 
+                FROM jobs 
+                WHERE 1=1 ";
+
+            if ($jobStatus !== null) {
+                $sql .= "AND status = :status ";
+            }
+
+            if ($cursorDate !== null && $cursorId !== null) {
+                $sql .= "AND (created_at, id) < (:cursor_date, :cursor_id) ";
+            }
+
+            $sql .= "ORDER BY created_at DESC, id DESC
+                    LIMIT :limit";
+
             $query = $this->pdo->prepare($sql);
+
+            if ($jobStatus !== null) {
+                $query->bindValue(':status', $jobStatus->value, \PDO::PARAM_STR);
+            }
+
+            if ($cursorDate !== null && $cursorId !== null) {
+                $query->bindValue(':cursor_date', $cursorDate, \PDO::PARAM_STR);
+                $query->bindValue(':cursor_id', $cursorId, \PDO::PARAM_STR);
+            }
+            $query->bindValue(':limit', (int) $limit, \PDO::PARAM_INT);
             $query->execute();
             $result = $query->fetchAll();
 
